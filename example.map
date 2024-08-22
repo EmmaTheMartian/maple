@@ -1,0 +1,43 @@
+// wow a comment :D
+int = 1273
+string = 'down to rockefeller street'
+// strings are required to use single quotes
+string_2 = 'life is marching on, can you feel that'
+float = 12.73
+
+map = {
+	example = 'string'
+	example_2 = 1273
+	bool = false
+}
+
+array = [
+	'wow',
+	'that',
+	'is',
+	'really',
+	'cool',
+	123,
+	true,
+]
+
+songs = [
+	{
+		name = 'Rockefeller Street'
+		artist = 'idk'
+		lyrics = [
+			'1273'
+			'Down to Rockefeller street'
+		]
+	},
+	{
+		name = 'Old Yellow Bricks'
+		artist = 'Arctic Monkeys'
+		lyrics = [
+			'a',
+			'b',
+			'c' // note that i "forget" a comma here :>
+			'd'
+		]
+	}
+]
