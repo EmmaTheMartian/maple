@@ -112,7 +112,7 @@ pub fn deserialize(value string) ValueT {
 	} else if value[0] == `[` && value[value.len - 1] == `]` {
 		return split_array(value).map(|it| deserialize(it.trim_space()))
 	} else if value[0] == `'` && value[value.len - 1] == `'` {
-		return value#[1..value.len - 1]
+		return value.substr_ni(1, -1)
 	} else if value == 'true' {
 		return true
 	} else if value == 'false' {
