@@ -3,19 +3,20 @@ module maple
 import os
 import strings
 import strings.textscanner
+import datatypes
 
 type ValueT = string | int | f32 | bool | map[string]ValueT | []ValueT
 
 fn (val ValueT) serialize() string {
 	match val {
-		string { return val }
+		string { return '\'${val}\'' }
 		int { return val.str() }
 		f32 { return val.str() }
 		bool { return val.str() }
 		map[string]ValueT {
 			mut s := '{'
 			for key, val_val in val {
-				s += '${key}=${val_val.serialize()},'
+				s += '${key} = ${val_val.serialize()};'
 			}
 			s += '}'
 			return s
@@ -33,20 +34,30 @@ fn (val ValueT) serialize() string {
 }
 
 fn split_array(value string) []string {
-	println('splitting: ${value}')
 	mut values := []string{}
 	mut builder := strings.new_builder(0)
 	mut in_string := false
 	mut prev := ` `
+	mut brace_stack := datatypes.Stack[rune]{}
 
 	for ch in value#[1..-1] {
 		if ch == `'` && prev != `\\` {
 			in_string = !in_string
-		} else if ch == `,` && !in_string {
+		} else if ch == `,` && !in_string && brace_stack.is_empty() {
 			values << builder.str()
 			builder = strings.new_builder(0)
 			prev = ` `
 			continue
+		} else if ch == `{` || ch == `[` {
+			brace_stack.push(ch)
+		} else if ch == `}` || ch == `]` {
+			peeked := brace_stack.peek() or { panic('Unexpected brace: ${ch}') }
+
+			if (peeked == `{` && ch != `}`) || (peeked == `[` && ch != `]`) {
+				panic('Mismatched brace: ${ch}')
+			}
+
+			brace_stack.pop() or { panic('Unexpected brace: ${ch}') }
 		}
 		builder.write_u8(ch)
 		prev = ch
@@ -62,7 +73,10 @@ fn split_array(value string) []string {
 
 fn deserialize(value string) ValueT {
 	if value[0] == `{` && value[value.len - 1] == `}` {
-		return load(value.all_after_first('{').before('}'))
+		return load(value.all_after_first('{').before('}')) or {
+			println(err)
+			panic('Failed to load table value: ${value}')
+		}
 	} else if value[0] == `[` && value[value.len - 1] == `]` {
 		return split_array(value).map(|it| deserialize(it.trim_space()))
 	} else if value[0] == `'` && value[value.len - 1] == `'` {
@@ -80,215 +94,87 @@ fn deserialize(value string) ValueT {
 	}
 }
 
-pub fn save(fp string, data map[string]ValueT) ! {
+pub fn save(data map[string]ValueT) string {
+	// We set an initial buffer of 1024 here because it will prevent smaller configs
+	// from needing to grow_len so often.
+	mut string_builder := strings.new_builder(1024)
+	for key, value in data {
+		serialized := value.serialize()
+		string_builder.write_string('${key} = ${serialized}')
+		if serialized[serialized.len - 1] != `}` && serialized[serialized.len - 1] != `]` {
+			string_builder.write_rune(`;`)
+		}
+	}
+	return string_builder.str()
+}
+
+pub fn save_file(fp string, data map[string]ValueT) ! {
 	mut file := os.create(fp)!
 	defer { file.close() }
 	for key, value in data {
-		file.write_string('${key} = ${value.serialize()}')!
-	}
-}
-
-fn load_new(code string) []string {
-	mut scanner := textscanner.new(code)
-	mut ch := ` `
-	mut tokens := []string{}
-	mut buf := strings.new_builder(0)
-	whitespace := '\r\t\f\n '
-
-	for {
-		ch = scanner.next()
-
-		if ch == `/` && scanner.peek() == `/` {
-			for {
-				ch = scanner.next()
-				if ch == `\n` || ch == -1 {
-					break
-				}
-			}
-		} else if ch == `\n` && buf.len > 0 {
-			tokens << buf.str()
-			buf = strings.new_builder(0)
+		serialized := value.serialize()
+		file.write_string('${key} = ${serialized}')!
+		if serialized[serialized.len - 1] != `}` && serialized[serialized.len - 1] != `]` {
+			file.write_string(';')!
 		}
 	}
 }
 
-fn tokenize(code string) []string {
-	// Bad comments no parsing!
-	mut cleaned_code := strings.new_builder(code.len)
-	for line in code.split_into_lines() {
-		if line.trim_space() == '' || line.trim_space().starts_with('//') {
-			continue
-		}
-		cleaned_code.write_string(line)
-	}
-
-	// Tokenize
-	mut scanner := textscanner.new(code)
-	mut ch := ` `
-	mut tokens := []string{}
-	mut buf := strings.new_builder(0)
-	whitespace := '\r\t\f\n '
-
-	for {
-		ch = scanner.next()
-
-		if ch == `/` && scanner.peek() == `/` {
-			for {
-				ch = scanner.next()
-				if ch == `\n` || ch == -1 {
-					break
-				}
-			}
-		} else if ch == `\n` && buf.len > 0 {
-			tokens << buf.str()
-			buf = strings.new_builder(0)
-		} else if whitespace.contains_u8(ch) {
-		} else if ch == `=` {
-			// Flush
-			if buf.len > 0 {
-				tokens << buf.str()
-				buf = strings.new_builder(0)
-			}
-
-			tokens << ch.str()
-		} else if ch == `'` {
-			// Flush
-			if buf.len > 0 {
-				tokens << buf.str()
-				buf = strings.new_builder(0)
-			}
-
-			for {
-				ch = scanner.next()
-				if ch == `'` && scanner.peek_back() != `\\` {
-					break
-				}
-				buf.write_rune(ch)
-			}
-
-			tokens << "'${buf.str()}'"
-			buf = strings.new_builder(0)
-		} else if ch == `[` {
-			// Flush
-			if buf.len > 0 {
-				tokens << buf.str()
-				buf = strings.new_builder(0)
-			}
-
-			mut depth := 1
-			mut in_string := false
-			buf.write_rune(`[`)
-			for {
-				ch = scanner.next()
-				// Comments
-				if ch == `/` && scanner.peek() == `/` {
-					for {
-						ch = scanner.next()
-						if ch == `\n` || ch == -1 {
-							break
-						}
-					}
-				}
-				// Strings
-				else if ch == `'` && scanner.peek_back() != `\\` {
-					in_string = !in_string
-				}
-				// Nested arrays
-				else if ch == `[` {
-					depth++
-				} else if ch == `]` {
-					depth--
-					if depth == 0 {
-						break
-					}
-				}
-
-				buf.write_rune(ch)
-			}
-			buf.write_rune(`]`)
-
-			tokens << buf.str()
-			buf = strings.new_builder(0)
-		} else if ch == `{` {
-			// Flush
-			if buf.len > 0 {
-				tokens << buf.str()
-				buf = strings.new_builder(0)
-			}
-
-			mut depth := 1
-			mut in_string := false
-			buf.write_rune(`{`)
-			for {
-				ch = scanner.next()
-				// Comments
-				if ch == `/` && scanner.peek() == `/` {
-					for {
-						ch = scanner.next()
-						if ch == `\n` || ch == -1 {
-							break
-						}
-					}
-				}
-				// Strings
-				else if ch == `'` && scanner.peek_back() != `\\` {
-					in_string = !in_string
-				}
-				// Nested arrays
-				else if ch == `{` {
-					depth++
-				} else if ch == `}` {
-					depth--
-					if depth == 0 {
-						break
-					}
-				}
-
-				buf.write_rune(ch)
-			}
-			buf.write_rune(`}`)
-
-			tokens << buf.str()
-			buf = strings.new_builder(0)
-		} else if ch == -1 {
-			break
-		} else {
-			buf.write_rune(ch)
-		}
-	}
-
-	return tokens
-}
-
-struct Statement {
-pub:
-	key string
-	value string
-}
-
-@[inline] fn parse(code string) []Statement {
-	mut statements := []Statement{}
-	tokens := tokenize(code)
-
-	for token in tokens { println(token) }
-
-	for i in 0 .. tokens.len {
-		if tokens[i] == '=' {
-			statements << Statement{tokens[i - 1], tokens[i + 1]}
-		}
-	}
-
-	return statements
-}
-
-@[inline] pub fn load(code string) map[string]ValueT {
+pub fn load(code string) !map[string]ValueT {
 	mut table := map[string]ValueT{}
-	for statement in parse(code) {
-		table[statement.key] = deserialize(statement.value)
+
+	mut scanner := textscanner.new(code)
+	mut ch := ` `
+	mut buf := strings.new_builder(0)
+	mut brace_stack := datatypes.Stack[rune]{}
+
+	for {
+		ch = scanner.next()
+
+		if ch == -1 {
+			break
+		} else if ch == `/` && scanner.peek() == `/` {
+			for {
+				ch = scanner.next()
+				if ch == `\n` || ch == -1 {
+					break
+				}
+			}
+			continue
+		} else if ch == `;` && buf.len > 0 && brace_stack.is_empty() {
+			statement := buf.str()
+			println('st: ' + statement.all_after_first('=').trim_space())
+			table[statement.before('=').trim_space()] = deserialize(statement.all_after_first('=').trim_space())
+			buf = strings.new_builder(0)
+			continue
+		} else if ch == `{` || ch == `[` {
+			brace_stack.push(ch)
+			println('brace stack: ${brace_stack}')
+		} else if ch == `}` || ch == `]` {
+			peeked := brace_stack.peek() or { panic('Unexpected brace: ${ch}') }
+
+			if (peeked == `{` && ch != `}`) || (peeked == `[` && ch != `]`) {
+				panic('Mismatched brace: ${ch}')
+			}
+
+			brace_stack.pop() or { panic('Unexpected brace: ${ch}') }
+			println('brace stack: ${brace_stack}')
+
+			if brace_stack.is_empty() {
+				buf.write_rune(ch)
+				statement := buf.str()
+				table[statement.before('=').trim_space()] = deserialize(statement.all_after_first('=').trim_space())
+				buf = strings.new_builder(0)
+				continue
+			}
+		}
+
+		buf.write_rune(ch)
 	}
+
 	return table
 }
 
 @[inline] pub fn load_file(fp string) !map[string]ValueT {
-	return load(os.read_file(fp)!)
+	return load(os.read_file(fp)!)!
 }

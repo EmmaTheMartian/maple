@@ -1,13 +1,20 @@
 module maple
 
 fn test_load() {
-	// data := tokenize(os.read_file('example.map') or {
-	// 	println(err)
-	// 	panic('Failed to load example.map')
-	// })
 	data := load_file('example.map') or {
 		println(err)
-		panic('Failed to load example.map')
+		panic('Failed to parse or load example.map')
 	}
+	saved := save(data)
+	println(saved)
+	unsaved := load(saved) or {
+		println(err)
+		panic('Failed to parse or load reserialized data from example.map')
+	}
+	println('Raw Loaded Data:')
 	println(data)
+	println('Raw->Serialize->Load Loaded Data:')
+	println(unsaved)
+	assert data == unsaved
+	println('Passed: ${data == unsaved}')
 }

@@ -1,43 +1,18 @@
-// wow a comment :D
-int = 1273;
-string = 'down to rockefeller street';
-// strings are required to use single quotes
-string_2 = 'life is marching on, can you feel that';
-float = 12.73;
-
-map = {
-	example = 'string';
-	example_2 = 1273;
-	bool = false;
-};
-
-array = [
-	'wow';
-	'that';
-	'is';
-	'really';
-	'cool';
-	123;
-	true;
-];
-
 songs = [
 	{
-		name = 'Rockefeller Street';
-		artist = 'idk';
+		title = 'Rockefeller Street';
 		lyrics = [
-			'1273';
-			'Down to Rockefeller street';
-		];
-	};,
+			1732,
+			'Down to Rockefeller Street',
+			'Life is marching on can you feel that?'
+		]
+	},
 	{
-		name = 'Old Yellow Bricks';
-		artist = 'Arctic Monkeys';
+		title = 'Old Yellow Bricks';
 		lyrics = [
-			'a';
-			'b';
-			'c';
-			'd';
-		];
-	};
+			'Old Yellow Bricks',
+			'Love\'s a risk',
+			'Quite the little escapologist'
+		]
+	}
 ]
