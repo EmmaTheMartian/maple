@@ -5,9 +5,27 @@ import strings
 import strings.textscanner
 import datatypes
 
-type ValueT = string | int | f32 | bool | map[string]ValueT | []ValueT
+pub type ValueT = string | int | f32 | bool | map[string]ValueT | []ValueT
 
-fn (val ValueT) serialize() string {
+@[inline] pub fn (value ValueT) to_str() string { return value as string }
+@[inline] pub fn (value ValueT) to_int() int { return value as int }
+@[inline] pub fn (value ValueT) to_f32() f32 { return value as f32 }
+@[inline] pub fn (value ValueT) to_bool() bool { return value as bool }
+@[inline] pub fn (value ValueT) to_map() map[string]ValueT { return value as map[string]ValueT }
+@[inline] pub fn (value ValueT) to_array() []ValueT { return value as []ValueT }
+
+@[inline] pub fn (value ValueT) get(key string) ValueT {
+	if value is map[string]ValueT {
+		return value[key] or { panic('Failed to index map with key: ${key}') }
+	}
+	panic('Cannot invoke .get() on a non-map ValueT.')
+}
+
+@[inline] pub fn (m map[string]ValueT) get(key string) ValueT {
+	return m[key] or { panic('Failed to index map with key: ${key}') }
+}
+
+pub fn (val ValueT) serialize() string {
 	match val {
 		string { return '\'${val}\'' }
 		int { return val.str() }
@@ -71,7 +89,7 @@ fn split_array(value string) []string {
 	return values
 }
 
-fn deserialize(value string) ValueT {
+pub fn deserialize(value string) ValueT {
 	if value[0] == `{` && value[value.len - 1] == `}` {
 		return load(value.all_after_first('{').before('}')) or {
 			println(err)
@@ -143,13 +161,11 @@ pub fn load(code string) !map[string]ValueT {
 			continue
 		} else if ch == `;` && buf.len > 0 && brace_stack.is_empty() {
 			statement := buf.str()
-			println('st: ' + statement.all_after_first('=').trim_space())
 			table[statement.before('=').trim_space()] = deserialize(statement.all_after_first('=').trim_space())
 			buf = strings.new_builder(0)
 			continue
 		} else if ch == `{` || ch == `[` {
 			brace_stack.push(ch)
-			println('brace stack: ${brace_stack}')
 		} else if ch == `}` || ch == `]` {
 			peeked := brace_stack.peek() or { panic('Unexpected brace: ${ch}') }
 
@@ -158,7 +174,6 @@ pub fn load(code string) !map[string]ValueT {
 			}
 
 			brace_stack.pop() or { panic('Unexpected brace: ${ch}') }
-			println('brace stack: ${brace_stack}')
 
 			if brace_stack.is_empty() {
 				buf.write_rune(ch)

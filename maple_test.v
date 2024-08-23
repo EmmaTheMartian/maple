@@ -15,6 +15,7 @@ fn test_load() {
 	println(data)
 	println('Raw->Serialize->Load Loaded Data:')
 	println(unsaved)
+	println('Playlist: ${data.get('playlist_info').get('name').to_str()} by ${data.get('playlist_info').get('author').to_str()}')
 	assert data == unsaved
 	println('Passed: ${data == unsaved}')
 }
