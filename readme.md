@@ -13,9 +13,26 @@ that `maple` does not use `[these.things]` for maps.
 TL;DR: this:
 
 ```maple
-key = value
+key = value;
+// allowed values:
+// strings have to use single-quotes
+my_string = 'Some string';
+my_int = 1273;
+my_float = 12.34;
+my_bool = false;
+// Note that maps and arrays **do not** have semicolons at the end
+my_map = {
+    my_name = 'Emma';
+    more_values = 1273;
+}
+my_array = [
+    1,
+    'uno',
+    3,
+    'cuatro'
+]
 ```
 
 What, did you think it was going to be a complex monstrosity?
 
-> For an example showing every type, see [`example.map`](example.map).
+> For an more comprehensive example, see [`example.map`](example.map).
