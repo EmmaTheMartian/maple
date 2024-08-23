@@ -1,5 +1,5 @@
 playlist_info = {
-	name = 'Vibes';
+	name = '${Vibes}';
 	author = 'Emma';
 }
 

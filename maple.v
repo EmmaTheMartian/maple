@@ -25,6 +25,17 @@ pub type ValueT = string | int | f32 | bool | map[string]ValueT | []ValueT
 	return m[key] or { panic('Failed to index map with key: ${key}') }
 }
 
+@[inline] pub fn (value ValueT) str() string {
+	match value {
+		string { return value }
+		int { return value.str() }
+		f32 { return value.str() }
+		bool { return value.str() }
+		map[string]ValueT { return value.str() }
+		[]ValueT { return value.str() }
+	}
+}
+
 pub fn (val ValueT) serialize() string {
 	match val {
 		string { return '\'${val}\'' }
@@ -61,21 +72,23 @@ fn split_array(value string) []string {
 	for ch in value#[1..-1] {
 		if ch == `'` && prev != `\\` {
 			in_string = !in_string
-		} else if ch == `,` && !in_string && brace_stack.is_empty() {
-			values << builder.str()
-			builder = strings.new_builder(0)
-			prev = ` `
-			continue
-		} else if ch == `{` || ch == `[` {
-			brace_stack.push(ch)
-		} else if ch == `}` || ch == `]` {
-			peeked := brace_stack.peek() or { panic('Unexpected brace: ${ch}') }
+		} else if !in_string {
+			if ch == `,` && brace_stack.is_empty() {
+				values << builder.str()
+				builder = strings.new_builder(0)
+				prev = ` `
+				continue
+			} else if ch == `{` || ch == `[` {
+				brace_stack.push(ch)
+			} else if ch == `}` || ch == `]` {
+				peeked := brace_stack.peek() or { panic('Unexpected brace: ${ch}') }
 
-			if (peeked == `{` && ch != `}`) || (peeked == `[` && ch != `]`) {
-				panic('Mismatched brace: ${ch}')
+				if (peeked == `{` && ch != `}`) || (peeked == `[` && ch != `]`) {
+					panic('Mismatched brace: ${ch}')
+				}
+
+				brace_stack.pop() or { panic('Unexpected brace: ${ch}') }
 			}
-
-			brace_stack.pop() or { panic('Unexpected brace: ${ch}') }
 		}
 		builder.write_u8(ch)
 		prev = ch
@@ -91,10 +104,11 @@ fn split_array(value string) []string {
 
 pub fn deserialize(value string) ValueT {
 	if value[0] == `{` && value[value.len - 1] == `}` {
-		return load(value.all_after_first('{').before('}')) or {
+		l := load(value.all_after_first('{').all_before_last('}')) or {
 			println(err)
 			panic('Failed to load table value: ${value}')
 		}
+		return l
 	} else if value[0] == `[` && value[value.len - 1] == `]` {
 		return split_array(value).map(|it| deserialize(it.trim_space()))
 	} else if value[0] == `'` && value[value.len - 1] == `'` {
@@ -145,6 +159,7 @@ pub fn load(code string) !map[string]ValueT {
 	mut ch := ` `
 	mut buf := strings.new_builder(0)
 	mut brace_stack := datatypes.Stack[rune]{}
+	mut in_string := false
 
 	for {
 		ch = scanner.next()
@@ -159,14 +174,16 @@ pub fn load(code string) !map[string]ValueT {
 				}
 			}
 			continue
+		} else if ch == `'` && scanner.peek_back() != `\\` {
+			in_string = !in_string
 		} else if ch == `;` && buf.len > 0 && brace_stack.is_empty() {
 			statement := buf.str()
 			table[statement.before('=').trim_space()] = deserialize(statement.all_after_first('=').trim_space())
 			buf = strings.new_builder(0)
 			continue
-		} else if ch == `{` || ch == `[` {
+		} else if !in_string && (ch == `{` || ch == `[`) {
 			brace_stack.push(ch)
-		} else if ch == `}` || ch == `]` {
+		} else if !in_string && (ch == `}` || ch == `]`) {
 			peeked := brace_stack.peek() or { panic('Unexpected brace: ${ch}') }
 
 			if (peeked == `{` && ch != `}`) || (peeked == `[` && ch != `]`) {
@@ -185,6 +202,10 @@ pub fn load(code string) !map[string]ValueT {
 		}
 
 		buf.write_rune(ch)
+	}
+
+	if !brace_stack.is_empty() {
+		panic('Reached EOL before brace ending. Brace stack: ${brace_stack}')
 	}
 
 	return table
