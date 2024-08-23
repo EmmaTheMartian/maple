@@ -3,8 +3,6 @@ module maple
 import os
 import strings
 import strings.textscanner
-import regex
-import datatypes
 
 type ValueT = string | int | f32 | bool | map[string]ValueT | []ValueT
 
@@ -35,6 +33,7 @@ fn (val ValueT) serialize() string {
 }
 
 fn split_array(value string) []string {
+	println('splitting: ${value}')
 	mut values := []string{}
 	mut builder := strings.new_builder(0)
 	mut in_string := false
@@ -53,7 +52,7 @@ fn split_array(value string) []string {
 		prev = ch
 	}
 
-	s := builder.str()
+	s := builder.str().trim_space()
 	if s.len > 0 {
 		values << s
 	}
@@ -89,9 +88,31 @@ pub fn save(fp string, data map[string]ValueT) ! {
 	}
 }
 
-const maple_regex = '.*\\s*=\\s*((\\d+(\\.\\d+)?)|(\'((.*)?)\')|(true)|(false)|(\\[.*\\])|(\\{.*\\}))'
+fn load_new(code string) []string {
+	mut scanner := textscanner.new(code)
+	mut ch := ` `
+	mut tokens := []string{}
+	mut buf := strings.new_builder(0)
+	whitespace := '\r\t\f\n '
 
-fn parse(code string) []string {
+	for {
+		ch = scanner.next()
+
+		if ch == `/` && scanner.peek() == `/` {
+			for {
+				ch = scanner.next()
+				if ch == `\n` || ch == -1 {
+					break
+				}
+			}
+		} else if ch == `\n` && buf.len > 0 {
+			tokens << buf.str()
+			buf = strings.new_builder(0)
+		}
+	}
+}
+
+fn tokenize(code string) []string {
 	// Bad comments no parsing!
 	mut cleaned_code := strings.new_builder(code.len)
 	for line in code.split_into_lines() {
@@ -101,38 +122,169 @@ fn parse(code string) []string {
 		cleaned_code.write_string(line)
 	}
 
-	// Character-by-character parse
+	// Tokenize
 	mut scanner := textscanner.new(code)
 	mut ch := ` `
-	mut statements := []string{}
-	mut brace_stack := datatypes.Stack{}
-	mut in_string := false
+	mut tokens := []string{}
+	mut buf := strings.new_builder(0)
+	whitespace := '\r\t\f\n '
+
 	for {
 		ch = scanner.next()
 
-		if ch == `=` {
+		if ch == `/` && scanner.peek() == `/` {
+			for {
+				ch = scanner.next()
+				if ch == `\n` || ch == -1 {
+					break
+				}
+			}
+		} else if ch == `\n` && buf.len > 0 {
+			tokens << buf.str()
+			buf = strings.new_builder(0)
+		} else if whitespace.contains_u8(ch) {
+		} else if ch == `=` {
+			// Flush
+			if buf.len > 0 {
+				tokens << buf.str()
+				buf = strings.new_builder(0)
+			}
 
+			tokens << ch.str()
+		} else if ch == `'` {
+			// Flush
+			if buf.len > 0 {
+				tokens << buf.str()
+				buf = strings.new_builder(0)
+			}
+
+			for {
+				ch = scanner.next()
+				if ch == `'` && scanner.peek_back() != `\\` {
+					break
+				}
+				buf.write_rune(ch)
+			}
+
+			tokens << "'${buf.str()}'"
+			buf = strings.new_builder(0)
+		} else if ch == `[` {
+			// Flush
+			if buf.len > 0 {
+				tokens << buf.str()
+				buf = strings.new_builder(0)
+			}
+
+			mut depth := 1
+			mut in_string := false
+			buf.write_rune(`[`)
+			for {
+				ch = scanner.next()
+				// Comments
+				if ch == `/` && scanner.peek() == `/` {
+					for {
+						ch = scanner.next()
+						if ch == `\n` || ch == -1 {
+							break
+						}
+					}
+				}
+				// Strings
+				else if ch == `'` && scanner.peek_back() != `\\` {
+					in_string = !in_string
+				}
+				// Nested arrays
+				else if ch == `[` {
+					depth++
+				} else if ch == `]` {
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+
+				buf.write_rune(ch)
+			}
+			buf.write_rune(`]`)
+
+			tokens << buf.str()
+			buf = strings.new_builder(0)
+		} else if ch == `{` {
+			// Flush
+			if buf.len > 0 {
+				tokens << buf.str()
+				buf = strings.new_builder(0)
+			}
+
+			mut depth := 1
+			mut in_string := false
+			buf.write_rune(`{`)
+			for {
+				ch = scanner.next()
+				// Comments
+				if ch == `/` && scanner.peek() == `/` {
+					for {
+						ch = scanner.next()
+						if ch == `\n` || ch == -1 {
+							break
+						}
+					}
+				}
+				// Strings
+				else if ch == `'` && scanner.peek_back() != `\\` {
+					in_string = !in_string
+				}
+				// Nested arrays
+				else if ch == `{` {
+					depth++
+				} else if ch == `}` {
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+
+				buf.write_rune(ch)
+			}
+			buf.write_rune(`}`)
+
+			tokens << buf.str()
+			buf = strings.new_builder(0)
 		} else if ch == -1 {
 			break
+		} else {
+			buf.write_rune(ch)
 		}
 	}
 
-	// Compile regex
-	mut re := regex.new()
-	re.compile_opt(maple_regex) or {
-		println(err)
-		panic('Failed to compile regex. This should not happen.')
-	}
-
-	// Parse the newly cleaned code
-	return re.find_all_str(cleaned_code.str())
+	return tokens
 }
 
-pub fn load(code string) map[string]ValueT {
+struct Statement {
+pub:
+	key string
+	value string
+}
+
+@[inline] fn parse(code string) []Statement {
+	mut statements := []Statement{}
+	tokens := tokenize(code)
+
+	for token in tokens { println(token) }
+
+	for i in 0 .. tokens.len {
+		if tokens[i] == '=' {
+			statements << Statement{tokens[i - 1], tokens[i + 1]}
+		}
+	}
+
+	return statements
+}
+
+@[inline] pub fn load(code string) map[string]ValueT {
 	mut table := map[string]ValueT{}
-	for token in parse(code) {
-		println(token)
-		table[token.before('=').trim_space()] = deserialize(token.all_after_first('=').trim_space())
+	for statement in parse(code) {
+		table[statement.key] = deserialize(statement.value)
 	}
 	return table
 }
