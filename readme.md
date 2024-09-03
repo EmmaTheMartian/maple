@@ -16,14 +16,13 @@ TL;DR: this:
 key = value;
 // allowed values:
 // strings have to use single-quotes
-my_string = 'Some string';
-my_int = 1273;
-my_float = 12.34;
-my_bool = false;
-// Note that maps and arrays **do not** have semicolons at the end
+my_string = 'Some string'
+my_int = 1273
+my_float = 12.34
+my_bool = false
 my_map = {
-    my_name = 'Emma';
-    more_values = 1273;
+    my_name = 'Emma'
+    more_values = 1273
 }
 my_array = [
     1,
