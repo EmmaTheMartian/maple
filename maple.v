@@ -103,6 +103,7 @@ fn split_array(value string) []string {
 }
 
 pub fn deserialize(value string) ValueT {
+	println('value: ${value}')
 	if value[0] == `{` && value[value.len - 1] == `}` {
 		l := load(value.all_after_first('{').all_before_last('}')) or {
 			println(err)
@@ -152,6 +153,8 @@ pub fn save_file(fp string, data map[string]ValueT) ! {
 	}
 }
 
+pub const whitespace = ' \t\r\n\f'
+
 pub fn load(code string) !map[string]ValueT {
 	mut table := map[string]ValueT{}
 
@@ -160,6 +163,7 @@ pub fn load(code string) !map[string]ValueT {
 	mut buf := strings.new_builder(0)
 	mut brace_stack := datatypes.Stack[rune]{}
 	mut in_string := false
+	mut buffered_key := ''
 
 	for {
 		ch = scanner.next()
@@ -176,10 +180,18 @@ pub fn load(code string) !map[string]ValueT {
 			continue
 		} else if ch == `'` && scanner.peek_back() != `\\` {
 			in_string = !in_string
-		} else if ch == `;` && buf.len > 0 && brace_stack.is_empty() {
-			statement := buf.str()
-			table[statement.before('=').trim_space()] = deserialize(statement.all_after_first('=').trim_space())
+		} else if !in_string && ch == `=` && brace_stack.is_empty() {
+			if buf.len <= 0 {
+				panic('Unexpected `=`')
+			}
+			buffered_key = buf.str().trim_space()
 			buf = strings.new_builder(0)
+			continue
+		} else if !in_string && (ch == `;` || ch == `\n`) && buf.len > 0 && brace_stack.is_empty() && buffered_key.len != 0 {
+			statement := buf.str()
+			table[buffered_key] = deserialize(statement.trim_space())
+			buf = strings.new_builder(0)
+			buffered_key = ''
 			continue
 		} else if !in_string && (ch == `{` || ch == `[`) {
 			brace_stack.push(ch)
@@ -192,11 +204,12 @@ pub fn load(code string) !map[string]ValueT {
 
 			brace_stack.pop() or { panic('Unexpected brace: ${ch}') }
 
-			if brace_stack.is_empty() {
+			if brace_stack.is_empty() && buffered_key.len != 0 {
 				buf.write_rune(ch)
 				statement := buf.str()
-				table[statement.before('=').trim_space()] = deserialize(statement.all_after_first('=').trim_space())
+				table[buffered_key] = deserialize(statement.trim_space())
 				buf = strings.new_builder(0)
+				buffered_key = ''
 				continue
 			}
 		}
@@ -206,6 +219,14 @@ pub fn load(code string) !map[string]ValueT {
 
 	if !brace_stack.is_empty() {
 		panic('Reached EOL before brace ending. Brace stack: ${brace_stack}')
+	} else if in_string {
+		panic('Reached EOL before string ending.')
+	}
+
+	// Check for a final variable
+	if buffered_key.len != 0 {
+		statement := buf.str()
+		table[buffered_key] = deserialize(statement.trim_space())
 	}
 
 	return table

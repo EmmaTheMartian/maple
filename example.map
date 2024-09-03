@@ -1,13 +1,13 @@
 playlist_info = {
-	name = '${Vibes}';
-	author = 'Emma';
+	name = '${Vibes}'
+	author = 'Emma'
 }
 
 test_value = { name = 'This is a test value!'; value = [ 1273, 'Down to Rockefeller Street' ] }
 
 songs = [
 	{
-		title = 'Rockefeller Street';
+		title = 'Rockefeller Street'
 		lyrics = [
 			1732,
 			'Down to Rockefeller Street',
