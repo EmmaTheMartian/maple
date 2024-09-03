@@ -103,7 +103,6 @@ fn split_array(value string) []string {
 }
 
 pub fn deserialize(value string) ValueT {
-	println('value: ${value}')
 	if value[0] == `{` && value[value.len - 1] == `}` {
 		l := load(value.all_after_first('{').all_before_last('}')) or {
 			println(err)
