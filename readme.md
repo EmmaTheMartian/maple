@@ -37,3 +37,7 @@ my_array = [
 What, did you think it was going to be a complex monstrosity?
 
 > For a more comprehensive example, see [`example.maple`](example.maple).
+
+## License
+
+`maple` is dual-licensed under MIT and the Unlicense. Pick whichever you prefer :P
