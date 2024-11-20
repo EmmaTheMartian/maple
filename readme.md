@@ -7,8 +7,10 @@ because the other options are overkill for my projects.
 
 ## What It Looks Like
 
-`maple` is inspired by TOML and can be thought of as a subset of it. The difference being
-that `maple` does not use `[these.things]` for maps.
+`maple` is inspired by TOML and can be thought of almost* as a subset of it. The
+major differences being:
+- `maple` does not use `[these.things]` for maps
+- `maple` uses `//` for comments instead of `#`
 
 TL;DR: this:
 
@@ -34,4 +36,4 @@ my_array = [
 
 What, did you think it was going to be a complex monstrosity?
 
-> For an more comprehensive example, see [`example.map`](example.map).
+> For a more comprehensive example, see [`example.maple`](example.maple).

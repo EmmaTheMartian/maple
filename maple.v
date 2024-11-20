@@ -169,7 +169,7 @@ pub fn load(code string) !map[string]ValueT {
 
 		if ch == -1 {
 			break
-		} else if ch == `/` && scanner.peek() == `/` {
+		} else if !in_string && ch == `/` && scanner.peek() == `/` {
 			for {
 				ch = scanner.next()
 				if ch == `\n` || ch == -1 {

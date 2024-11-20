@@ -1,7 +1,7 @@
 module maple
 
 fn test_load() {
-	data := load_file('example.map') or {
+	data := load_file('example.maple') or {
 		println(err)
 		panic('Failed to parse or load example.map')
 	}
