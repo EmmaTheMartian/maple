@@ -25,3 +25,5 @@ songs = [
 		]
 	}
 ]
+
+another_string = "Hello, World!"

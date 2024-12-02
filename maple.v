@@ -8,25 +8,51 @@ import datatypes
 // A sum type to represent any possible value in Maple
 pub type ValueT = string | int | f32 | bool | map[string]ValueT | []ValueT
 
-@[inline] pub fn (value ValueT) to_str() string { return value as string }
-@[inline] pub fn (value ValueT) to_int() int { return value as int }
-@[inline] pub fn (value ValueT) to_f32() f32 { return value as f32 }
-@[inline] pub fn (value ValueT) to_bool() bool { return value as bool }
-@[inline] pub fn (value ValueT) to_map() map[string]ValueT { return value as map[string]ValueT }
-@[inline] pub fn (value ValueT) to_array() []ValueT { return value as []ValueT }
+@[inline]
+pub fn (value ValueT) to_str() string {
+	return value as string
+}
 
-@[inline] pub fn (value ValueT) get(key string) ValueT {
+@[inline]
+pub fn (value ValueT) to_int() int {
+	return value as int
+}
+
+@[inline]
+pub fn (value ValueT) to_f32() f32 {
+	return value as f32
+}
+
+@[inline]
+pub fn (value ValueT) to_bool() bool {
+	return value as bool
+}
+
+@[inline]
+pub fn (value ValueT) to_map() map[string]ValueT {
+	return value as map[string]ValueT
+}
+
+@[inline]
+pub fn (value ValueT) to_array() []ValueT {
+	return value as []ValueT
+}
+
+@[inline]
+pub fn (value ValueT) get(key string) ValueT {
 	if value is map[string]ValueT {
 		return value[key] or { panic('Failed to index map with key: ${key}') }
 	}
 	panic('Cannot invoke .get() on a non-map ValueT.')
 }
 
-@[inline] pub fn (m map[string]ValueT) get(key string) ValueT {
+@[inline]
+pub fn (m map[string]ValueT) get(key string) ValueT {
 	return m[key] or { panic('Failed to index map with key: ${key}') }
 }
 
-@[inline] pub fn (value ValueT) str() string {
+@[inline]
+pub fn (value ValueT) str() string {
 	match value {
 		string { return value }
 		int { return value.str() }
@@ -40,10 +66,18 @@ pub type ValueT = string | int | f32 | bool | map[string]ValueT | []ValueT
 // Serialize a value to a string
 pub fn (val ValueT) serialize() string {
 	match val {
-		string { return '\'${val}\'' }
-		int { return val.str() }
-		f32 { return val.str() }
-		bool { return val.str() }
+		string {
+			return '\'${val}\''
+		}
+		int {
+			return val.str()
+		}
+		f32 {
+			return val.str()
+		}
+		bool {
+			return val.str()
+		}
 		map[string]ValueT {
 			mut s := '{'
 			for key, val_val in val {
@@ -68,20 +102,21 @@ pub fn (val ValueT) serialize() string {
 struct Brace {
 pub:
 	line int
-	col int
-	ch rune
+	col  int
+	ch   rune
 }
 
 // Used to hold data regarding line, column, and brace stack.
 // Used primarily for descriptive error messages.
 pub struct DeserializationContext {
 pub mut:
-	line int = 1
-	col int = 1
-	brace_stack datatypes.Stack[Brace] = datatypes.Stack[Brace]{}
-	in_string bool
+	line              int                    = 1
+	col               int                    = 1
+	brace_stack       datatypes.Stack[Brace] = datatypes.Stack[Brace]{}
+	in_string         bool
+	string_kind       rune
 	string_start_line int = 1
-	string_start_col int = 1
+	string_start_col  int = 1
 }
 
 // Splits a serialized array.
@@ -139,7 +174,8 @@ pub fn deserialize(value string, mut con DeserializationContext) ValueT {
 		return split_array(value, mut con).map(fn [mut con] (it string) ValueT {
 			return deserialize(it.trim_space(), mut con)
 		})
-	} else if value[0] == `'` && value[value.len - 1] == `'` {
+	} else if (value[0] == `'` && value[value.len - 1] == `'`)
+		|| (value[0] == `"` && value[value.len - 1] == `"`) {
 		return value.substr_ni(1, -1)
 	} else if value == 'true' {
 		return true
@@ -187,7 +223,7 @@ pub const whitespace = ' \t\r\n\f'
 
 // Deserialize code to a map[string]ValueT
 pub fn load(code string) !map[string]ValueT {
-	mut context := DeserializationContext{ }
+	mut context := DeserializationContext{}
 	mut table := map[string]ValueT{}
 
 	mut scanner := textscanner.new(code)
@@ -205,19 +241,20 @@ pub fn load(code string) !map[string]ValueT {
 
 		if ch == -1 {
 			break
-		} else if !context.in_string && ch == `/` && scanner.peek() == `/` {
-			for {
-				ch = scanner.next()
-				if ch == `\n` || ch == -1 {
-					break
-				}
+		} else if (ch == `'` || ch == `"`) && scanner.peek_back() != `\\` {
+			if context.in_string && context.string_kind != ch {
+				buf.write_rune(ch)
+				context.col++
+				continue
 			}
-			continue
-		} else if ch == `'` && scanner.peek_back() != `\\` {
+
 			if buffered_key.len == 0 {
 				panic('Unexpected string (at ${context.line}:${context.col})')
 			}
+
 			context.in_string = !context.in_string
+			context.string_kind = ch
+
 			if context.in_string {
 				context.string_start_line = context.line
 				context.string_start_col = context.col
@@ -225,22 +262,38 @@ pub fn load(code string) !map[string]ValueT {
 				context.string_start_line = -1
 				context.string_start_col = -1
 			}
-		} else if !context.in_string && ch == `=` && context.brace_stack.is_empty() {
+		} else if context.in_string {
+			// We check for a string early so that we do not have to
+			// spend a precious CPU cycle checking that in every if
+			// check after this
+			buf.write_rune(ch)
+			context.col++
+			continue
+		} else if ch == `/` && scanner.peek() == `/` {
+			for {
+				ch = scanner.next()
+				if ch == `\n` || ch == -1 {
+					break
+				}
+			}
+			continue
+		} else if ch == `=` && context.brace_stack.is_empty() {
 			if buf.len <= 0 {
 				panic('Unexpected `=` (at ${context.line}:${context.col})')
 			}
 			buffered_key = buf.str().trim_space()
 			buf = strings.new_builder(0)
 			continue
-		} else if !context.in_string && (ch == `;` || ch == `\n`) && buf.len > 0 && context.brace_stack.is_empty() && buffered_key.len != 0 {
+		} else if (ch == `;` || ch == `\n`) && buf.len > 0 && context.brace_stack.is_empty()
+			&& buffered_key.len != 0 {
 			statement := buf.str()
 			table[buffered_key] = deserialize(statement.trim_space(), mut context)
 			buf = strings.new_builder(0)
 			buffered_key = ''
 			continue
-		} else if !context.in_string && (ch == `{` || ch == `[`) {
+		} else if ch == `{` || ch == `[` {
 			context.brace_stack.push(Brace{context.line, context.col, ch})
-		} else if !context.in_string && (ch == `}` || ch == `]`) {
+		} else if ch == `}` || ch == `]` {
 			peeked := context.brace_stack.peek() or {
 				panic('Unexpected brace: ${ch} (at ${context.line}:${context.col})')
 			}
@@ -283,6 +336,7 @@ pub fn load(code string) !map[string]ValueT {
 }
 
 // Load a map[string]ValueT from a file
-@[inline] pub fn load_file(fp string) !map[string]ValueT {
+@[inline]
+pub fn load_file(fp string) !map[string]ValueT {
 	return load(os.read_file(fp)!)!
 }

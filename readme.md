@@ -2,8 +2,8 @@
 
 > Literally just a key-value (aka map) based config language. That's it.
 
-Yes, there are loads more of these types of config languages, but I wanted to make my own
-because the other options are overkill for my projects.
+Yes, there are loads more of these types of config languages, but I wanted to
+make my own because the other options are overkill for my projects.
 
 ## What It Looks Like
 
