@@ -51,51 +51,50 @@ pub fn (m map[string]ValueT) get(key string) ValueT {
 	return m[key] or { panic('Failed to index map with key: ${key}') }
 }
 
+// str converts the value to a parsable string
 @[inline]
 pub fn (value ValueT) str() string {
+	return value.serialize()
+}
+
+@[params]
+pub struct SerializeOptions {
+pub:
+	indents int
+	indent_str string = '\t'
+}
+
+// serialize converts a value to a parsable string.
+pub fn (value ValueT) serialize(opts SerializeOptions) string {
 	match value {
-		string { return value }
+		string { return '\'${value}\'' }
 		int { return value.str() }
 		f32 { return value.str() }
 		bool { return value.str() }
-		map[string]ValueT { return value.str() }
-		[]ValueT { return value.str() }
-	}
-}
-
-// Serialize a value to a string
-pub fn (val ValueT) serialize() string {
-	match val {
-		string {
-			return '\'${val}\''
-		}
-		int {
-			return val.str()
-		}
-		f32 {
-			return val.str()
-		}
-		bool {
-			return val.str()
-		}
 		map[string]ValueT {
-			mut s := '{'
-			for key, val_val in val {
-				s += '${key} = ${val_val.serialize()};'
+			indent_string := opts.indent_str.repeat(opts.indents + 1)
+			indented_opts := SerializeOptions{
+				...opts
+				indents: opts.indents + 1
 			}
-			s += '}'
-			return s
+			mut s := '{\n'
+			for key, val in value {
+				s += '${indent_string}${key} = ${val.serialize(indented_opts)}\n'
+			}
+			return '${s}${opts.indent_str.repeat(opts.indents)}}'
 		}
 		[]ValueT {
-			mut s := '['
-			for val_val in val {
-				s += val_val.serialize() + ','
+			indent_string := opts.indent_str.repeat(opts.indents + 1)
+			mut s := '[\n'
+			for val in value {
+				s += indent_string + val.serialize(SerializeOptions{
+					...opts
+					indents: opts.indents + 1
+				}) + ',\n'
 			}
-			s += ']'
-			return s
+			return '${s}${opts.indent_str.repeat(opts.indents)}]'
 		}
 	}
-	panic('Unknown value kind, cannot serialize.')
 }
 
 // Represents an open brace on the brace stack. Used primarily for error messages.
@@ -196,26 +195,17 @@ pub fn save(data map[string]ValueT) string {
 	// from needing to grow_len so often.
 	mut string_builder := strings.new_builder(1024)
 	for key, value in data {
-		serialized := value.serialize()
-		string_builder.write_string('${key} = ${serialized}')
-		if serialized[serialized.len - 1] != `}` && serialized[serialized.len - 1] != `]` {
-			string_builder.write_rune(`;`)
-		}
+		string_builder.write_string('${key} = ${value.serialize()}\n')
 	}
 	return string_builder.str()
 }
 
 // Save a map[string]ValueT to a file
+@[inline]
 pub fn save_file(fp string, data map[string]ValueT) ! {
 	mut file := os.create(fp)!
 	defer { file.close() }
-	for key, value in data {
-		serialized := value.serialize()
-		file.write_string('${key} = ${serialized}')!
-		if serialized[serialized.len - 1] != `}` && serialized[serialized.len - 1] != `]` {
-			file.write_string(';')!
-		}
-	}
+	file.write_string(save(data))!
 }
 
 // Any form of whitespace recognized by the deserializer
@@ -321,7 +311,15 @@ pub fn load(code string) !map[string]ValueT {
 	}
 
 	if !context.brace_stack.is_empty() {
-		panic('Reached EOL before brace ending. Brace stack: ${context.brace_stack} (started at ${context.brace_stack.peek()!.line}:${context.brace_stack.peek()!.col})')
+		top_ch := context.brace_stack.peek()!.ch
+		kind := if top_ch == `[` {
+			'array'
+		} else if top_ch == `{` {
+			'map'
+		} else {
+			'unknown brace type (${top_ch})'
+		}
+		panic('Reached EOL before ${kind} ending. Brace stack: ${context.brace_stack} (started at ${context.brace_stack.peek()!.line}:${context.brace_stack.peek()!.col})')
 	} else if context.in_string {
 		panic('Reached EOL before string ending (string started at ${context.string_start_line}:${context.string_start_col})')
 	}

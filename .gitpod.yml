@@ -1,2 +1,3 @@
 tasks:
-  - init: git clone https://github.com/vlang/v && cd v && make && sudo ./v symlink
+  - name: "Init"
+    command: ./scripts/gitpod-init.sh

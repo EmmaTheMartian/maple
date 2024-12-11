@@ -38,6 +38,15 @@ What, did you think it was going to be a complex monstrosity?
 
 > For a more comprehensive example, see [`example.maple`](example.maple).
 
+## `maplecli/`
+
+You may notice the `maplecli` folder. It contains a CLI tool to parse and read
+Maple files. For the most part it is completely useless to most, but I use it
+to test erroneous Maple files.
+
+It can also be used in shell scripts to read Maple files for configuration, if
+you want to do that for whatever reason.
+
 ## License
 
 `maple` is dual-licensed under MIT and the Unlicense. Pick whichever you prefer :P
