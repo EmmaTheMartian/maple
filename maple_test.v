@@ -1,5 +1,14 @@
 module maple
 
+struct User {
+pub mut:
+	name     string
+	password string
+	age      u8
+	token    u64 @[skip]
+	id       u32 @[maple: 'identifier']
+}
+
 fn test_string() {
 	data := "my_string = 'Hello, World!'"
 	assert load(data)!.get('my_string').to_str() == 'Hello, World!'
@@ -85,4 +94,19 @@ fn test_load() {
 	println('Playlist: ${data.get('playlist_info').get('name').to_str()} by ${data.get('playlist_info').get('author').to_str()}')
 	assert data == unsaved
 	println('Passed: ${data == unsaved}')
+}
+
+fn test_load_struct() {
+	data := load_to_struct[User]('\
+		name = "Emma"
+		password = "haha lol"
+		age = 90384725
+		identifier = 1111') or {
+			panic(err)
+		}
+	assert data.name == 'Emma'
+	assert data.password == 'haha lol'
+	assert data.age == 90384725
+	assert data.token == 0
+	assert data.id == 1111
 }
