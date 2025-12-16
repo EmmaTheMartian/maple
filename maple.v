@@ -1,9 +1,7 @@
 module maple
 
-import os
 import strings
-import strings.textscanner
-import datatypes
+import os
 
 // A sum type to represent any possible value in Maple
 pub type ValueT = string | int | f32 | bool | map[string]ValueT | []ValueT
@@ -60,17 +58,25 @@ pub fn (value ValueT) str() string {
 @[params]
 pub struct SerializeOptions {
 pub:
-	indents int
+	indents    int
 	indent_str string = '\t'
 }
 
 // serialize converts a value to a parsable string.
 pub fn (value ValueT) serialize(opts SerializeOptions) string {
 	match value {
-		string { return '\'${value}\'' }
-		int { return value.str() }
-		f32 { return value.str() }
-		bool { return value.str() }
+		string {
+			return '\'${value}\''
+		}
+		int {
+			return value.str()
+		}
+		f32 {
+			return value.str()
+		}
+		bool {
+			return value.str()
+		}
 		map[string]ValueT {
 			indent_string := opts.indent_str.repeat(opts.indents + 1)
 			indented_opts := SerializeOptions{
@@ -97,96 +103,282 @@ pub fn (value ValueT) serialize(opts SerializeOptions) string {
 	}
 }
 
-// Represents an open brace on the brace stack. Used primarily for error messages.
-struct Brace {
-pub:
+enum TokenKind {
+	error
+	eof
+	id
+	str    // ".*" or '.*'
+	true   // true
+	false  // false
+	int    // [0-9]+
+	float  // [0-9]+\.[0-9]+
+	equals // =
+	comma  // ,
+	oparen // (
+	cparen // )
+	obrack // [
+	cbrack // ]
+	obrace // {
+	cbrace // }
+}
+
+struct Token {
+pub mut:
+	kind TokenKind
 	line int
 	col  int
-	ch   rune
+	pos  int
+	len  int
 }
 
-// Used to hold data regarding line, column, and brace stack.
-// Used primarily for descriptive error messages.
-pub struct DeserializationContext {
+@[direct_array_access; inline]
+fn (tok Token) text(lexer &Lexer) string {
+	return (*lexer.text)[tok.pos..tok.pos + tok.len]
+}
+
+struct Lexer {
+pub:
+	text &string
 pub mut:
-	line              int                    = 1
-	col               int                    = 1
-	brace_stack       datatypes.Stack[Brace] = datatypes.Stack[Brace]{}
-	in_string         bool
-	string_kind       rune
-	string_start_line int = 1
-	string_start_col  int = 1
+	line  int = 1
+	col   int = 1
+	start int
+	pos   int
 }
 
-// Splits a serialized array.
-fn split_array(value string, mut con DeserializationContext) []string {
-	mut values := []string{}
-	mut builder := strings.new_builder(0)
-	mut prev := ` `
+@[direct_array_access]
+fn (mut lexer Lexer) skip_whitespace() {
+	for {
+		mut ch := (*lexer.text)[lexer.pos]
+		if ' \t\r\f'.contains_u8(ch) {
+			lexer.pos++
+			lexer.col++
+		} else if ch == `\n` {
+			lexer.pos++
+			lexer.col = 1
+			lexer.line++
+		} else if ch == `/` && (*lexer.text)[lexer.pos] == `/` {
+			for ch != `\n` {
+				ch = (*lexer.text)[lexer.pos]
+				lexer.pos++
+			}
+			lexer.col = 1
+			lexer.line++
+		} else {
+			return
+		}
+	}
+}
 
-	for ch in value#[1..-1] {
-		if ch == `'` && prev != `\\` {
-			con.in_string = !con.in_string
-		} else if !con.in_string {
-			if ch == `,` && con.brace_stack.is_empty() {
-				values << builder.str()
-				builder = strings.new_builder(0)
-				prev = ` `
-				continue
-			} else if ch == `{` || ch == `[` {
-				con.brace_stack.push(Brace{con.line, con.col, ch})
-			} else if ch == `}` || ch == `]` {
-				peeked := con.brace_stack.peek() or {
-					panic('Unexpected brace: ${ch} (at ${con.line}:${con.col})')
-				}
+@[direct_array_access]
+fn (mut lexer Lexer) next() ?Token {
+	if lexer.pos >= lexer.text.len {
+		return none
+	}
 
-				if (peeked.ch == `{` && ch != `}`) || (peeked.ch == `[` && ch != `]`) {
-					panic('Mismatched brace: ${ch} (at ${con.line}:${con.col})')
-				}
+	lexer.skip_whitespace()
 
-				con.brace_stack.pop() or {
-					panic('Unexpected brace: ${ch} (at ${con.line}:${con.col})')
-				}
+	lexer.start = lexer.pos
+
+	mut ch := (*lexer.text)[lexer.pos]
+	mut kind := TokenKind.error
+	lexer.pos++
+	lexer.col++
+
+	sym := match ch {
+		// vfmt off
+		`=` { TokenKind.equals }
+		`,` { .comma }
+		`(` { .oparen }
+		`)` { .cparen }
+		`[` { .obrack }
+		`]` { .cbrack }
+		`{` { .obrace }
+		`}` { .cbrace }
+		// vfmt on
+		else { .error }
+	}
+	if sym != .error {
+		return Token{sym, lexer.line, lexer.col, lexer.start, lexer.pos - lexer.start}
+	}
+
+	if ch.is_letter() || ch == `_` {
+		kind = .id
+		lexer.pos++
+		lexer.col++
+		ch = (*lexer.text)[lexer.pos]
+		for ch.is_alnum() || ch == `_` {
+			lexer.pos++
+			lexer.col++
+			ch = (*lexer.text)[lexer.pos]
+		}
+	} else if ch == `"` || ch == `'` {
+		kind = .str
+		s := ch
+		lexer.pos++
+		lexer.col++
+		ch = (*lexer.text)[lexer.pos]
+		for ch != s {
+			lexer.pos++
+			lexer.col++
+			ch = (*lexer.text)[lexer.pos]
+			if ch == `\\` {
+				lexer.pos++
+				lexer.col++
+				ch = (*lexer.text)[lexer.pos]
 			}
 		}
-		builder.write_u8(ch)
-		prev = ch
+		// eat the closing quote
+		lexer.pos++
+		lexer.col++
+	} else if ch.is_digit() || ch == `-` {
+		kind = .int
+		lexer.pos++
+		lexer.col++
+		ch = (*lexer.text)[lexer.pos]
+		for ch.is_digit() || ch == `_` {
+			lexer.pos++
+			lexer.col++
+			ch = (*lexer.text)[lexer.pos]
+		}
+		if ch == `.` {
+			kind = .float
+			lexer.pos++
+			lexer.col++
+			ch = (*lexer.text)[lexer.pos]
+			for ch.is_digit() || ch == `_` {
+				lexer.pos++
+				lexer.col++
+				ch = (*lexer.text)[lexer.pos]
+			}
+		}
+	} else {
+		eprintln('error: unexpected character: `${ch.ascii_str()}` at ${lexer.line}:${lexer.col}')
+		return none
 	}
 
-	s := builder.str().trim_space()
-	if s.len > 0 {
-		values << s
+	mut tok := Token{kind, lexer.line, lexer.col, lexer.start, lexer.pos - lexer.start}
+
+	if tok.kind == .id {
+		tok.kind = match (*lexer.text)[tok.pos..tok.pos + tok.len] {
+			'true' { .true }
+			'false' { .false }
+			else { tok.kind }
+		}
 	}
 
-	return values
+	return tok
 }
 
-// Deserialize a value to a ValueT. See maple.laod for deserializing more than just a value.
-pub fn deserialize(value string, mut con DeserializationContext) ValueT {
-	if value[0] == `{` && value[value.len - 1] == `}` {
-		l := load(value.all_after_first('{').all_before_last('}')) or {
-			println(err)
-			panic('Failed to load table value: ${value} (at ${con.line}:${con.col})')
+struct Parser {
+pub mut:
+	lexer Lexer
+	cur   Token
+	next  Token
+	done  bool
+}
+
+fn (mut parser Parser) advance() {
+	parser.cur = parser.next
+	parser.next = parser.lexer.next() or {
+		parser.done = true
+		Token{
+			kind: .eof
+		}
+	}
+}
+
+fn (mut parser Parser) accept(kind TokenKind) bool {
+	if parser.next.kind == kind {
+		parser.advance()
+		return true
+	}
+	return false
+}
+
+fn (mut parser Parser) expect(kind TokenKind) {
+	if parser.next.kind != kind {
+		eprintln('error: expected token of kind ${kind} but got ${parser.next.kind}: \'${parser.next.text(parser.lexer)}\' at ${parser.next.line}:${parser.next.col}')
+		exit(1) // todo: return result
+	}
+	parser.advance()
+}
+
+fn (mut parser Parser) parse_value() !ValueT {
+	if parser.accept(.str) {
+		return parser.cur.text(parser.lexer).substr_ni(1, -1)
+	} else if parser.accept(.int) {
+		return parser.cur.text(parser.lexer).replace('_', '').int()
+	} else if parser.accept(.float) {
+		return parser.cur.text(parser.lexer).replace('_', '').f32()
+	} else if parser.accept(.true) {
+		return true
+	} else if parser.accept(.false) {
+		return false
+	} else if parser.accept(.obrack) {
+		mut l := []ValueT{}
+		for !parser.accept(.cbrack) && !parser.done {
+			if parser.done {
+				return error('reached eof before closing bracket (`]`)')
+			}
+			l << parser.parse_value()!
+			parser.accept(.comma)
 		}
 		return l
-	} else if value[0] == `[` && value[value.len - 1] == `]` {
-		return split_array(value, mut con).map(fn [mut con] (it string) ValueT {
-			return deserialize(it.trim_space(), mut con)
-		})
-	} else if (value[0] == `'` && value[value.len - 1] == `'`)
-		|| (value[0] == `"` && value[value.len - 1] == `"`) {
-		return value.substr_ni(1, -1)
-	} else if value == 'true' {
-		return true
-	} else if value == 'false' {
-		return false
-	} else if value.is_int() {
-		return value.int()
-	} else if value.count('.') == 1 && value.before('.').is_int() && value.after('.').is_int() {
-		return value.f32()
-	} else {
-		panic('Invalid value: ${value} (at ${con.line}:${con.col})')
+	} else if parser.accept(.obrace) {
+		mut m := map[string]ValueT{}
+		for !parser.accept(.cbrace) && !parser.done {
+			if parser.done {
+				return error('reached eof before closing brace (`}`)')
+			}
+			parser.expect(.id)
+			key := parser.cur.text(parser.lexer)
+			parser.expect(.equals)
+			m[key] = parser.parse_value()!
+			parser.accept(.comma)
+		}
+		return m
 	}
+	return error('failed to parse value')
+}
+
+fn (mut parser Parser) parse_doc() !map[string]ValueT {
+	mut m := map[string]ValueT{}
+	for !parser.done {
+		parser.expect(.id)
+		key := parser.cur.text(parser.lexer)
+		parser.expect(.equals)
+		m[key] = parser.parse_value()!
+		parser.accept(.comma)
+	}
+	return m
+}
+
+fn Parser.new(text &string) Parser {
+	return Parser{
+		lexer: Lexer{
+			text: unsafe { text }
+		}
+	}
+}
+
+pub fn deserialize(text string) !ValueT {
+	mut parser := Parser.new(text)
+	parser.advance()
+	return parser.parse_value()
+}
+
+// Deserialize text to a map[string]ValueT
+pub fn load(text string) !map[string]ValueT {
+	mut parser := Parser.new(text)
+	parser.advance()
+	return parser.parse_doc()
+}
+
+// Load a map[string]ValueT from a file
+@[inline]
+pub fn load_file(fp string) !map[string]ValueT {
+	return load(os.read_file(fp)!)!
 }
 
 // Serialize data to a string
@@ -206,135 +398,4 @@ pub fn save_file(fp string, data map[string]ValueT) ! {
 	mut file := os.create(fp)!
 	defer { file.close() }
 	file.write_string(save(data))!
-}
-
-// Any form of whitespace recognized by the deserializer
-pub const whitespace = ' \t\r\n\f'
-
-// Deserialize code to a map[string]ValueT
-pub fn load(code string) !map[string]ValueT {
-	mut context := DeserializationContext{}
-	mut table := map[string]ValueT{}
-
-	mut scanner := textscanner.new(code)
-	mut ch := ` `
-	mut buf := strings.new_builder(0)
-	mut buffered_key := ''
-
-	for {
-		ch = scanner.next()
-
-		if ch == `\n` {
-			context.col = 1
-			context.line++
-		}
-
-		if ch == -1 {
-			break
-		} else if (ch == `'` || ch == `"`) && scanner.peek_back() != `\\` {
-			if context.in_string && context.string_kind != ch {
-				buf.write_rune(ch)
-				context.col++
-				continue
-			}
-
-			if buffered_key.len == 0 {
-				panic('Unexpected string (at ${context.line}:${context.col})')
-			}
-
-			context.in_string = !context.in_string
-			context.string_kind = ch
-
-			if context.in_string {
-				context.string_start_line = context.line
-				context.string_start_col = context.col
-			} else {
-				context.string_start_line = -1
-				context.string_start_col = -1
-			}
-		} else if context.in_string {
-			// We check for a string early so that we do not have to
-			// spend a precious CPU cycle checking that in every if
-			// check after this
-			buf.write_rune(ch)
-			context.col++
-			continue
-		} else if ch == `/` && scanner.peek() == `/` {
-			for {
-				ch = scanner.next()
-				if ch == `\n` || ch == -1 {
-					break
-				}
-			}
-			continue
-		} else if ch == `=` && context.brace_stack.is_empty() {
-			if buf.len <= 0 {
-				panic('Unexpected `=` (at ${context.line}:${context.col})')
-			}
-			buffered_key = buf.str().trim_space()
-			buf = strings.new_builder(0)
-			continue
-		} else if (ch == `;` || ch == `\n`) && buf.len > 0 && context.brace_stack.is_empty()
-			&& buffered_key.len != 0 {
-			statement := buf.str()
-			table[buffered_key] = deserialize(statement.trim_space(), mut context)
-			buf = strings.new_builder(0)
-			buffered_key = ''
-			continue
-		} else if ch == `{` || ch == `[` {
-			context.brace_stack.push(Brace{context.line, context.col, ch})
-		} else if ch == `}` || ch == `]` {
-			peeked := context.brace_stack.peek() or {
-				panic('Unexpected brace: ${ch} (at ${context.line}:${context.col})')
-			}
-
-			if (peeked.ch == `{` && ch != `}`) || (peeked.ch == `[` && ch != `]`) {
-				panic('Mismatched brace: ${ch} (at ${context.line}:${context.col})')
-			}
-
-			context.brace_stack.pop() or {
-				panic('Unexpected brace: ${ch} (at ${context.line}:${context.col})')
-			}
-
-			if context.brace_stack.is_empty() && buffered_key.len != 0 {
-				buf.write_rune(ch)
-				statement := buf.str()
-				table[buffered_key] = deserialize(statement.trim_space(), mut context)
-				buf = strings.new_builder(0)
-				buffered_key = ''
-				continue
-			}
-		}
-
-		buf.write_rune(ch)
-		context.col++
-	}
-
-	if !context.brace_stack.is_empty() {
-		top_ch := context.brace_stack.peek()!.ch
-		kind := if top_ch == `[` {
-			'array'
-		} else if top_ch == `{` {
-			'map'
-		} else {
-			'unknown brace type (${top_ch})'
-		}
-		panic('Reached EOL before ${kind} ending. Brace stack: ${context.brace_stack} (started at ${context.brace_stack.peek()!.line}:${context.brace_stack.peek()!.col})')
-	} else if context.in_string {
-		panic('Reached EOL before string ending (string started at ${context.string_start_line}:${context.string_start_col})')
-	}
-
-	// Check for a final variable
-	if buffered_key.len != 0 {
-		statement := buf.str()
-		table[buffered_key] = deserialize(statement.trim_space(), mut context)
-	}
-
-	return table
-}
-
-// Load a map[string]ValueT from a file
-@[inline]
-pub fn load_file(fp string) !map[string]ValueT {
-	return load(os.read_file(fp)!)!
 }

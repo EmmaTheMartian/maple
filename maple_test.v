@@ -1,45 +1,40 @@
 module maple
 
 fn test_string() {
-	data := "my_string = 'Hello, World!'"
-	assert load(data)!.get('my_string').to_str() == 'Hello, World!'
+	assert load("my_string = 'Hello, World!'")!.get('my_string').to_str() == 'Hello, World!'
 }
 
 fn test_string_2() {
-	data := 'my_string = "Hello, World!"'
-	assert load(data)!.get('my_string').to_str() == 'Hello, World!'
+	assert load('my_string = "Hello, World!"')!.get('my_string').to_str() == 'Hello, World!'
 }
 
 fn test_int() {
-	data := 'value = 1234'
-	assert load(data)!.get('value').to_int() == 1234
+	assert load('value = 1234')!.get('value').to_int() == 1234
+}
+
+fn test_big_int() {
+	assert load('value = 1_000_000')!.get('value').to_int() == 1_000_000
 }
 
 fn test_negative_int() {
-	data := 'value = -1234'
-	assert load(data)!.get('value').to_int() == -1234
+	assert load('value = -1234')!.get('value').to_int() == -1234
 }
 
 fn test_f32() {
-	data := 'value = 12.34'
-	assert load(data)!.get('value').to_f32() == 12.34
+	assert load('value = 12.34')!.get('value').to_f32() == 12.34
 }
 
-fn test_negative_f32() {
-	data := 'value = -12.34'
-	assert load(data)!.get('value').to_f32() == -12.34
+fn test_negative() {
+	assert load('value = -12.34')!.get('value').to_f32() == -12.34
 }
 
 fn test_bool() {
-	true_data := 'value = true'
-	false_data := 'value = false'
-	assert load(true_data)!.get('value').to_bool()
-	assert !load(false_data)!.get('value').to_bool()
+	assert load('value = true')!.get('value').to_bool()
+	assert !load('value = false')!.get('value').to_bool()
 }
 
 fn test_array() {
-	data := "my_array = [1, 2, 3, 'a', 'b', 'c']"
-	loaded := load(data)!.get('my_array').to_array()
+	loaded := load("my_array = [1, 2, 3, 'a', 'b', 'c']")!.get('my_array').to_array()
 	assert loaded[0].to_int() == 1
 	assert loaded[1].to_int() == 2
 	assert loaded[2].to_int() == 3
@@ -49,14 +44,13 @@ fn test_array() {
 }
 
 fn test_map() {
-	data := "my_map = {
-		song = 'Old Yellow Bricks'
+	loaded := load("my_map = {
+		song = 'Old Yellow Bricks' // comment
 		artist = 'Arctic Monkeys'
 		album = 'Favourite Worst Nightmare'
 		track_number = 11
 		year = 2007
-	}"
-	loaded := load(data)!.get('my_map').to_map()
+	}")!.get('my_map').to_map()
 	assert loaded.get('song').to_str() == 'Old Yellow Bricks'
 	assert loaded.get('artist').to_str() == 'Arctic Monkeys'
 	assert loaded.get('album').to_str() == 'Favourite Worst Nightmare'
@@ -67,14 +61,14 @@ fn test_map() {
 fn test_load() {
 	data := load_file('example.maple') or {
 		println(err)
-		panic('Failed to parse or load example.map')
+		panic('Failed to parse or load example.maple')
 	}
 	saved := save(data)
 	println('Saved:')
 	println(saved)
 	unsaved := load(saved) or {
 		println(err)
-		panic('Failed to parse or load reserialized data from example.map')
+		panic('Failed to parse or load reserialized data from example.maple')
 	}
 	println('Raw Loaded Data:')
 	println(data)

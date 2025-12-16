@@ -19,7 +19,7 @@ key = value;
 // allowed values:
 // strings have to use single-quotes
 my_string = 'Some string'
-my_int = 1273
+my_int = 1273 // you can also use underscores to separate big numbers (i.e, 1_000_000 == 1000000)
 my_float = 12.34
 my_bool = false
 my_map = {
