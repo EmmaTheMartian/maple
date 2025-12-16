@@ -171,9 +171,15 @@ fn (mut lexer Lexer) skip_whitespace() {
 }
 
 @[direct_array_access]
-fn (mut lexer Lexer) next() ?Token {
+fn (mut lexer Lexer) next() !Token {
 	if lexer.pos >= lexer.text.len {
-		return none
+		return Token{
+			kind: .eof
+			line: lexer.line
+			col:  lexer.col
+			pos:  lexer.text.len - 1
+			len:  0
+		}
 	}
 
 	lexer.skip_whitespace()
@@ -202,7 +208,15 @@ fn (mut lexer Lexer) next() ?Token {
 		return Token{sym, lexer.line, lexer.col, lexer.start, lexer.pos - lexer.start}
 	}
 
-	if ch.is_letter() || ch == `_` {
+	if ch == `\0` {
+		return Token{
+			kind: .eof
+			line: lexer.line
+			col:  lexer.col
+			pos:  lexer.text.len - 1
+			len:  0
+		}
+	} else if ch.is_letter() || ch == `_` {
 		kind = .id
 		lexer.pos++
 		lexer.col++
@@ -215,22 +229,24 @@ fn (mut lexer Lexer) next() ?Token {
 	} else if ch == `"` || ch == `'` {
 		kind = .str
 		s := ch
+		ch = (*lexer.text)[lexer.pos]
 		lexer.pos++
 		lexer.col++
-		ch = (*lexer.text)[lexer.pos]
-		for ch != s {
-			lexer.pos++
-			lexer.col++
-			ch = (*lexer.text)[lexer.pos]
-			if ch == `\\` {
+		if ch != s {
+			for ch != s {
 				lexer.pos++
 				lexer.col++
 				ch = (*lexer.text)[lexer.pos]
+				if ch == `\\` {
+					lexer.pos++
+					lexer.col++
+					ch = (*lexer.text)[lexer.pos]
+				}
 			}
+			// eat the closing quote
+			lexer.pos++
+			lexer.col++
 		}
-		// eat the closing quote
-		lexer.pos++
-		lexer.col++
 	} else if ch.is_digit() || ch == `-` {
 		kind = .int
 		lexer.pos++
@@ -253,8 +269,7 @@ fn (mut lexer Lexer) next() ?Token {
 			}
 		}
 	} else {
-		eprintln('error: unexpected character: `${ch.ascii_str()}` at ${lexer.line}:${lexer.col}')
-		return none
+		return error('unexpected character: `${ch.ascii_str()}` (${ch}) at ${lexer.line}:${lexer.col}')
 	}
 
 	mut tok := Token{kind, lexer.line, lexer.col, lexer.start, lexer.pos - lexer.start}
@@ -275,67 +290,60 @@ pub mut:
 	lexer Lexer
 	cur   Token
 	next  Token
-	done  bool
 }
 
-fn (mut parser Parser) advance() {
+fn (mut parser Parser) advance() ! {
 	parser.cur = parser.next
-	parser.next = parser.lexer.next() or {
-		parser.done = true
-		Token{
-			kind: .eof
-		}
-	}
+	parser.next = parser.lexer.next()!
 }
 
-fn (mut parser Parser) accept(kind TokenKind) bool {
+fn (mut parser Parser) accept(kind TokenKind) !bool {
 	if parser.next.kind == kind {
-		parser.advance()
+		parser.advance()!
 		return true
 	}
 	return false
 }
 
-fn (mut parser Parser) expect(kind TokenKind) {
+fn (mut parser Parser) expect(kind TokenKind) ! {
 	if parser.next.kind != kind {
-		eprintln('error: expected token of kind ${kind} but got ${parser.next.kind}: \'${parser.next.text(parser.lexer)}\' at ${parser.next.line}:${parser.next.col}')
-		exit(1) // todo: return result
+		return error('expected token of kind ${kind} but got ${parser.next.kind}: \'${parser.next.text(parser.lexer)}\' at ${parser.next.line}:${parser.next.col}')
 	}
-	parser.advance()
+	parser.advance()!
 }
 
 fn (mut parser Parser) parse_value() !ValueT {
-	if parser.accept(.str) {
+	if parser.accept(.str)! {
 		return parser.cur.text(parser.lexer).substr_ni(1, -1)
-	} else if parser.accept(.int) {
+	} else if parser.accept(.int)! {
 		return parser.cur.text(parser.lexer).replace('_', '').int()
-	} else if parser.accept(.float) {
+	} else if parser.accept(.float)! {
 		return parser.cur.text(parser.lexer).replace('_', '').f32()
-	} else if parser.accept(.true) {
+	} else if parser.accept(.true)! {
 		return true
-	} else if parser.accept(.false) {
+	} else if parser.accept(.false)! {
 		return false
-	} else if parser.accept(.obrack) {
+	} else if parser.accept(.obrack)! {
 		mut l := []ValueT{}
-		for !parser.accept(.cbrack) && !parser.done {
-			if parser.done {
+		for !parser.accept(.cbrack)! {
+			if parser.accept(.eof)! {
 				return error('reached eof before closing bracket (`]`)')
 			}
 			l << parser.parse_value()!
-			parser.accept(.comma)
+			parser.accept(.comma)!
 		}
 		return l
-	} else if parser.accept(.obrace) {
+	} else if parser.accept(.obrace)! {
 		mut m := map[string]ValueT{}
-		for !parser.accept(.cbrace) && !parser.done {
-			if parser.done {
+		for !parser.accept(.cbrace)! {
+			if parser.accept(.eof)! {
 				return error('reached eof before closing brace (`}`)')
 			}
-			parser.expect(.id)
+			parser.expect(.id)!
 			key := parser.cur.text(parser.lexer)
-			parser.expect(.equals)
+			parser.expect(.equals)!
 			m[key] = parser.parse_value()!
-			parser.accept(.comma)
+			parser.accept(.comma)!
 		}
 		return m
 	}
@@ -344,12 +352,12 @@ fn (mut parser Parser) parse_value() !ValueT {
 
 fn (mut parser Parser) parse_doc() !map[string]ValueT {
 	mut m := map[string]ValueT{}
-	for !parser.done {
-		parser.expect(.id)
+	for !parser.accept(.eof)! {
+		parser.expect(.id)!
 		key := parser.cur.text(parser.lexer)
-		parser.expect(.equals)
+		parser.expect(.equals)!
 		m[key] = parser.parse_value()!
-		parser.accept(.comma)
+		parser.accept(.comma)!
 	}
 	return m
 }
@@ -364,14 +372,14 @@ fn Parser.new(text &string) Parser {
 
 pub fn deserialize(text string) !ValueT {
 	mut parser := Parser.new(text)
-	parser.advance()
+	parser.advance()!
 	return parser.parse_value()
 }
 
 // Deserialize text to a map[string]ValueT
 pub fn load(text string) !map[string]ValueT {
 	mut parser := Parser.new(text)
-	parser.advance()
+	parser.advance()!
 	return parser.parse_doc()
 }
 

@@ -1,0 +1,95 @@
+// Toggles developer mode; when true, allows access to the admin panel for all users.
+dev_mode = false
+// Path to the static directory. You shouldn't ever need to change this.
+static_path = 'src/static'
+
+// General instance settings
+instance = {
+	// Instance version. This is shown on the about page.
+	version = '2025.12'
+
+	// Set this to '' if your instance is closed source. This is shown on the about page.
+	source = 'https://tangled.org/emmeline.girlkisser.top/beep'
+
+	// The instance's name, used for the page titles and on the homepage.
+	name = 'beep'
+	// The welcome message to show on the homepage.
+	welcome = 'welcome to beep!'
+
+	// TODO: Move default_theme and allow_changing_theme to user settings
+	// Default theme applied for all users.
+	default_theme = 'https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css'
+	// Whether or not users should be able to change their theme.
+	allow_changing_theme = true
+
+	// Toggle to require that users have the invite code to register.
+	invite_only = false
+	// Invite code. You can change this at any time.
+	invite_code = ''
+
+	// Toggle to allow any non-logged-in user to view data (posts, users, etc)
+	public_data = false
+}
+
+http = {
+	port = 8008
+}
+
+// Database settings.
+postgres = {
+	// Name of database container in compose.yml
+	host = 'beep-database'
+	port = 5432
+	user = 'beep'
+	password = 'beep' // TODO: Read from .env
+	db = 'beep'
+}
+
+hcaptcha = {
+	// Toggles if hcaptcha is enabled.
+	enabled = false
+	secret = '' // TODO: Read from .env
+	site_key = ''
+}
+
+// Post settings.
+post = {
+	title_min_len = 1
+	title_max_len = 50
+	title_pattern = '.*'
+
+	body_min_len = 1
+	body_max_len = 1000
+	body_pattern = '.*'
+}
+
+// User settings.
+user = {
+	username_min_len = 3
+	username_max_len = 20
+	username_pattern = '[a-z0-9_.]+'
+
+	nickname_min_len = 1
+	nickname_max_len = 20
+	nickname_pattern = '.*'
+
+	password_min_len = 12
+	password_max_len = 72
+	password_pattern = '.+'
+
+	pronouns_min_len = 0
+	pronouns_max_len = 30
+	pronouns_pattern = '.*'
+
+	bio_min_len = 0
+	bio_max_len = 200
+	bio_pattern = '.*'
+}
+
+// Welcome notification settings.
+welcome = {
+	// Title of the notification.
+	summary = 'welcome!'
+	// Notification body text. %s is replaced with the user's name.
+	body = 'hello %s and welcome to beep! i hope you enjoy your stay here :D'
+}

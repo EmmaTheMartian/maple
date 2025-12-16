@@ -5,7 +5,7 @@ playlist_info = {
 
 some_url = 'https://example.com/'
 
-test_value = { name = 'This is a test value!'; value = [ 1273, 'Down to Rockefeller Street' ] }
+test_value = { name = 'This is a test value!', value = [ 1273, 'Down to Rockefeller Street' ] }
 
 songs = [
 	{
@@ -17,7 +17,7 @@ songs = [
 		]
 	},
 	{
-		title = 'Old Yellow Bricks';
+		title = 'Old Yellow Bricks',
 		lyrics = [
 			'Old Yellow Bricks',
 			'Love\'s a risk',

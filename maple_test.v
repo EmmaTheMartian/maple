@@ -61,7 +61,7 @@ fn test_map() {
 fn test_load() {
 	data := load_file('example.maple') or {
 		println(err)
-		panic('Failed to parse or load example.maple')
+		panic('Failed to parse or load example.maple: ${err}')
 	}
 	saved := save(data)
 	println('Saved:')
